@@ -1,0 +1,20 @@
+[
+  {
+    "id": "1",
+    "content": "Welcome to the owockibot community forum! This space is exclusively for $OWOCKIBOT token holders. Let's build something great together.",
+    "authorAddress": "0x26B7805Dd8aEc26DA55fc8e0c659cf6822b740Be",
+    "timestamp": "2026-03-01T12:00:00.000Z"
+  },
+  {
+    "id": "2",
+    "content": "Just claimed my LP fees - the dashboard is looking clean. Who else is earning from the pool?",
+    "authorAddress": "0x5EC8684Ed3A81744efD396A75ea166055Cf3461A",
+    "timestamp": "2026-03-02T15:30:00.000Z"
+  },
+  {
+    "id": "3",
+    "content": "Suggestion: we should set up a community treasury for bounty funding. The fee revenue could fund it.",
+    "authorAddress": "0x4E6087de8F8ea0B9006F7d81BF65E0d3d732C966",
+    "timestamp": "2026-03-03T09:15:00.000Z"
+  }
+]

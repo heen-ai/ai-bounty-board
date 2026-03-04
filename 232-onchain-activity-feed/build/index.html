@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>owockibot Onchain Activity Feed</title>
+    <style>
+        :root {
+            --bg: #0f0f0f;
+            --card-bg: #1a1a1a;
+            --text: #e4e4e7;
+            --text-muted: #8a8a8a;
+            --accent: #f59e0b;
+            --accent-light: #fbbf24;
+            --safe: #10b981;
+            --token: #f59e0b;
+            --payout: #ef4444;
+            --lp: #3b82f6;
+            --border: #2a2a2a;
+            --honeycomb: #1e1e1e;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.6;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 56 100'%3E%3Cpath d='M28 66L0 50L0 16L28 0L56 16L56 50L28 66L28 100' fill='none' stroke='%23222' stroke-width='1'/%3E%3C/svg%3E");
+        }
+        .container { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
+        header { text-align: center; margin-bottom: 2rem; padding: 2rem 0; }
+        .logo { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        h1 {
+            font-size: 2rem; font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+        .subtitle { color: var(--text-muted); font-size: 0.95rem; }
+        .filters {
+            display: flex; gap: 0.5rem; flex-wrap: wrap;
+            justify-content: center; margin-bottom: 1.5rem;
+        }
+        .filter-btn {
+            background: var(--card-bg); border: 1px solid var(--border);
+            color: var(--text-muted); padding: 0.5rem 1rem; border-radius: 9999px;
+            cursor: pointer; font-size: 0.85rem; transition: all 0.2s;
+        }
+        .filter-btn:hover { border-color: var(--accent); color: var(--text); }
+        .filter-btn.active {
+            background: var(--accent); border-color: var(--accent); color: #000; font-weight: 600;
+        }
+        .timeline { position: relative; padding-left: 2rem; }
+        .timeline::before {
+            content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+            width: 2px; background: var(--border);
+        }
+        .activity {
+            position: relative; margin-bottom: 1.5rem; padding: 1.25rem;
+            background: var(--card-bg); border-radius: 12px;
+            border: 1px solid var(--border); transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .activity:hover { transform: translateX(4px); box-shadow: 0 4px 20px rgba(245,158,11,0.1); }
+        .activity::before {
+            content: ''; position: absolute; left: -2.35rem; top: 1.5rem;
+            width: 12px; height: 12px; border-radius: 50%;
+            background: var(--accent); border: 2px solid var(--bg);
+        }
+        .activity.safe::before { background: var(--safe); }
+        .activity.token::before { background: var(--token); }
+        .activity.payout::before { background: var(--payout); }
+        .activity.lp::before { background: var(--lp); }
+        .activity-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;
+        }
+        .activity-type {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.05em; padding: 0.25rem 0.6rem; border-radius: 9999px;
+        }
+        .activity-type.safe { background: rgba(16,185,129,0.15); color: var(--safe); }
+        .activity-type.token { background: rgba(245,158,11,0.15); color: var(--token); }
+        .activity-type.payout { background: rgba(239,68,68,0.15); color: var(--payout); }
+        .activity-type.lp { background: rgba(59,130,246,0.15); color: var(--lp); }
+        .timestamp { font-size: 0.8rem; color: var(--text-muted); }
+        .activity-title { font-weight: 600; font-size: 1rem; margin-bottom: 0.25rem; }
+        .activity-detail {
+            font-size: 0.85rem; color: var(--text-muted); word-break: break-all;
+        }
+        .activity-link {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            color: var(--accent); text-decoration: none; font-size: 0.8rem; margin-top: 0.5rem;
+        }
+        .activity-link:hover { text-decoration: underline; }
+        .loading { text-align: center; padding: 3rem; color: var(--text-muted); }
+        .error {
+            text-align: center; padding: 2rem;
+            background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+            border-radius: 12px; color: #fca5a5;
+        }
+        .config-note {
+            text-align: center; padding: 0.75rem;
+            background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2);
+            border-radius: 8px; margin-bottom: 1.5rem; font-size: 0.85rem; color: var(--accent-light);
+        }
+        .empty { text-align: center; padding: 3rem; color: var(--text-muted); }
+        .refresh-btn {
+            background: var(--card-bg); border: 1px solid var(--border);
+            color: var(--text-muted); padding: 0.5rem 1rem; border-radius: 8px;
+            cursor: pointer; font-size: 0.85rem; margin-left: 1rem; transition: all 0.2s;
+        }
+        .refresh-btn:hover { border-color: var(--accent); color: var(--text); }
+        .last-updated {
+            text-align: center; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 1rem;
+        }
+        footer {
+            margin-top: 3rem; padding: 2rem 0; border-top: 1px solid var(--border);
+            text-align: center; font-size: 0.85rem; color: var(--text-muted);
+        }
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+        footer .links { display: flex; gap: 1.5rem; justify-content: center; margin-top: 0.75rem; flex-wrap: wrap; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">🐝</div>
+            <h1>owockibot Onchain Activity</h1>
+            <p class="subtitle">Real-time feed of Safe transactions, token transfers, bounty payouts & LP fees</p>
+        </header>
+        
+        <div class="config-note">
+            📡 Powered by Blockscout API · Auto-refreshes every 30 seconds
+        </div>
+        
+        <div class="filters">
+            <button class="filter-btn active" data-filter="all">All</button>
+            <button class="filter-btn" data-filter="safe">Safe Txns</button>
+            <button class="filter-btn" data-filter="token">Token Transfers</button>
+            <button class="filter-btn" data-filter="payout">Bounty Payouts</button>
+            <button class="filter-btn" data-filter="lp">LP Fees</button>
+            <button class="refresh-btn" onclick="fetchAllActivities()">🔄 Refresh</button>
+        </div>
+        
+        <div class="last-updated" id="lastUpdated"></div>
+        
+        <div id="timeline" class="timeline">
+            <div class="loading">Loading onchain activity...</div>
+        </div>
+
+        <footer>
+            <p>Built by <a href="https://heenai.xyz" target="_blank">heenai.xyz</a> for the owockibot ecosystem</p>
+            <div class="links">
+                <a href="https://owockibot.xyz" target="_blank">owockibot.xyz</a>
+                <a href="https://basescan.org/address/0x26B7805Dd8aEc26DA55fc8e0c659cf6822b740Be" target="_blank">Safe on BaseScan</a>
+                <a href="https://basescan.org/token/0xfDC933Ff4e2980d18beCF48e4E030d8463A2Bb07" target="_blank">$owockibot Token</a>
+                <a href="https://dexscreener.com/base/0xfDC933Ff4e2980d18beCF48e4E030d8463A2Bb07" target="_blank">DexScreener</a>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        const BLOCKSCOUT_API = 'https://base.blockscout.com/api/v2';
+        const OWOCKI_SAFE = '0x26B7805Dd8aEc26DA55fc8e0c659cf6822b740Be';
+        const OWOCKI_TOKEN = '0xfDC933Ff4e2980d18beCF48e4E030d8463A2Bb07';
+        const FEE_LOCKER = '0xF3622742b1E446D92e45E22923Ef11C2fcD55D68';
+        const POOL_MANAGER = '0x498581fF718922c3f8e6A244956aF099B2652b2b';
+        const WETH = '0x4200000000000000000000000000000000000006';
+        
+        let allActivities = [];
+        
+        function formatTime(timestamp) {
+            const diff = Date.now() - timestamp;
+            if (diff < 60000) return 'Just now';
+            if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+            if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+            if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+            return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+        
+        function formatAddress(addr) {
+            if (!addr) return 'Unknown';
+            return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+        }
+        
+        function formatValue(wei, decimals = 18) {
+            if (!wei || wei === '0') return '0';
+            const value = parseFloat(wei) / Math.pow(10, decimals);
+            if (value === 0) return '0';
+            if (value < 0.0001) return value.toExponential(2);
+            if (value > 1000000) return (value / 1000000).toFixed(2) + 'M';
+            return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
+        }
+        
+        async function fetchJSON(url) {
+            try {
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                return await resp.json();
+            } catch (err) {
+                console.error('Fetch error:', url, err);
+                return null;
+            }
+        }
+        
+        async function fetchSafeTransactions() {
+            const activities = [];
+            try {
+                // Safe's own transactions
+                const data = await fetchJSON(`${BLOCKSCOUT_API}/addresses/${OWOCKI_SAFE}/transactions?filter=to|from`);
+                if (data?.items) {
+                    data.items.slice(0, 25).forEach(tx => {
+                        if (!tx.timestamp) return;
+                        const isOut = tx.from.hash.toLowerCase() === OWOCKI_SAFE.toLowerCase();
+                        const value = tx.value ? formatValue(tx.value, 18) : '0';
+                        const method = tx.method || '';
+                        let title = method ? `Safe: ${method}` : (isOut ? 'Safe Outgoing' : 'Safe Incoming');
+                        if (parseFloat(value) > 0) title = isOut ? 'ETH Sent' : 'ETH Received';
+                        
+                        activities.push({
+                            type: 'safe', title,
+                            detail: `${isOut ? 'To' : 'From'}: ${formatAddress(isOut ? tx.to?.hash : tx.from?.hash)}${parseFloat(value) > 0 ? ` | ${value} ETH` : ''}`,
+                            timestamp: new Date(tx.timestamp).getTime(),
+                            hash: tx.hash
+                        });
+                    });
+                }
+                
+                // Safe's token transfers (USDC payouts, WETH, owockibot)
+                const tokenData = await fetchJSON(`${BLOCKSCOUT_API}/addresses/${OWOCKI_SAFE}/token-transfers?type=ERC-20`);
+                if (tokenData?.items) {
+                    tokenData.items.slice(0, 25).forEach(tr => {
+                        if (!tr.timestamp) return;
+                        const isOut = tr.from.hash.toLowerCase() === OWOCKI_SAFE.toLowerCase();
+                        const sym = tr.token?.symbol || 'Token';
+                        const dec = parseInt(tr.token?.decimals || '18');
+                        const val = formatValue(tr.total?.value, dec);
+                        const isPayout = isOut && (sym === 'USDC' || sym === 'owockibot');
+                        const fromLocker = tr.from.hash.toLowerCase() === FEE_LOCKER.toLowerCase();
+                        const fromPM = tr.from.hash.toLowerCase() === POOL_MANAGER.toLowerCase();
+                        
+                        let type = isPayout ? 'payout' : ((fromLocker || fromPM) ? 'lp' : 'safe');
+                        let title = isPayout ? `💰 ${sym} Bounty Payout` : 
+                                    (fromLocker || fromPM) ? `🏊 LP Fee: ${val} ${sym}` :
+                                    `${isOut ? 'Sent' : 'Received'} ${sym}`;
+                        
+                        activities.push({
+                            type, title,
+                            detail: `${isOut ? 'To' : 'From'}: ${formatAddress(isOut ? tr.to.hash : tr.from.hash)} | ${val} ${sym}`,
+                            timestamp: new Date(tr.timestamp).getTime(),
+                            hash: tr.transaction_hash
+                        });
+                    });
+                }
+            } catch (err) {
+                console.error('Safe error:', err);
+            }
+            return activities;
+        }
+        
+        async function fetchTokenTransfers() {
+            const activities = [];
+            try {
+                const data = await fetchJSON(`${BLOCKSCOUT_API}/tokens/${OWOCKI_TOKEN}/transfers?type=ERC-20`);
+                if (data?.items) {
+                    data.items.slice(0, 25).forEach(tr => {
+                        if (!tr.timestamp) return;
+                        const from = tr.from.hash.toLowerCase();
+                        const to = tr.to.hash.toLowerCase();
+                        const val = formatValue(tr.total?.value, tr.total?.decimals || 18);
+                        
+                        let type = 'token', title = 'owockibot Transfer';
+                        if (from === OWOCKI_SAFE.toLowerCase()) { type = 'payout'; title = '💰 OWOCKI Payout'; }
+                        else if (from === FEE_LOCKER.toLowerCase() || from === POOL_MANAGER.toLowerCase()) { type = 'lp'; title = '🏊 LP Fee Claim'; }
+                        else if (to === '0x0000000000000000000000000000000000000000') { title = '🔥 OWOCKI Burn'; }
+                        
+                        activities.push({
+                            type, title,
+                            detail: `${formatAddress(tr.from.hash)} → ${formatAddress(tr.to.hash)} | ${val} owockibot`,
+                            timestamp: new Date(tr.timestamp).getTime(),
+                            hash: tr.transaction_hash
+                        });
+                    });
+                }
+            } catch (err) {
+                console.error('Token transfers error:', err);
+            }
+            return activities;
+        }
+        
+        async function fetchLPFees() {
+            const activities = [];
+            try {
+                // LP fees are WETH/token transfers FROM FeeLocker TO fee owner
+                const data = await fetchJSON(`${BLOCKSCOUT_API}/addresses/${FEE_LOCKER}/token-transfers?type=ERC-20`);
+                if (data?.items) {
+                    data.items.slice(0, 30).forEach(tr => {
+                        if (!tr.timestamp) return;
+                        const sym = tr.token?.symbol || '?';
+                        const dec = parseInt(tr.token?.decimals || '18');
+                        const val = formatValue(tr.total?.value, dec);
+                        const to = tr.to.hash;
+                        
+                        activities.push({
+                            type: 'lp',
+                            title: `🏊 LP Fee Claimed: ${val} ${sym}`,
+                            detail: `Claimed by: ${formatAddress(to)} from FeeLocker`,
+                            timestamp: new Date(tr.timestamp).getTime(),
+                            hash: tr.transaction_hash
+                        });
+                    });
+                }
+            } catch (err) {
+                console.error('LP fees error:', err);
+            }
+            return activities;
+        }
+        
+        function renderActivities(filter = 'all') {
+            const timeline = document.getElementById('timeline');
+            const filtered = filter === 'all' ? allActivities : allActivities.filter(a => a.type === filter);
+            filtered.sort((a, b) => b.timestamp - a.timestamp);
+            const display = filtered.slice(0, 40);
+            
+            if (display.length === 0) {
+                timeline.innerHTML = `<div class="empty">No ${filter === 'all' ? '' : filter + ' '}activities found</div>`;
+                return;
+            }
+            
+            timeline.innerHTML = display.map(a => `
+                <div class="activity ${a.type}">
+                    <div class="activity-header">
+                        <span class="activity-type ${a.type}">${a.type}</span>
+                        <span class="timestamp">${formatTime(a.timestamp)}</span>
+                    </div>
+                    <div class="activity-title">${a.title}</div>
+                    <div class="activity-detail">${a.detail}</div>
+                    ${a.hash ? `<a href="https://basescan.org/tx/${a.hash}" target="_blank" class="activity-link">↗ View on BaseScan</a>` : ''}
+                </div>
+            `).join('');
+        }
+        
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                renderActivities(btn.dataset.filter);
+            });
+        });
+        
+        async function fetchAllActivities() {
+            document.getElementById('timeline').innerHTML = '<div class="loading">🐝 Loading onchain activity...</div>';
+            try {
+                const [safe, tokens, lp] = await Promise.all([
+                    fetchSafeTransactions(),
+                    fetchTokenTransfers(),
+                    fetchLPFees()
+                ]);
+                
+                const seen = new Set();
+                allActivities = [];
+                [...safe, ...tokens, ...lp].forEach(a => {
+                    if (!a.hash || !seen.has(a.hash)) {
+                        if (a.hash) seen.add(a.hash);
+                        allActivities.push(a);
+                    }
+                });
+                
+                renderActivities();
+                document.getElementById('lastUpdated').textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+            } catch (error) {
+                document.getElementById('timeline').innerHTML = `<div class="error">Error loading activities: ${error.message}</div>`;
+            }
+        }
+        
+        fetchAllActivities();
+        setInterval(fetchAllActivities, 30000);
+    </script>
+</body>
+</html>

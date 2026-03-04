@@ -1,0 +1,8 @@
+{
+  "version": 2,
+  "name": "owockibot-twitter-report",
+  "builds": [
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "weekly_report.json", "use": "@vercel/static" }
+  ]
+}

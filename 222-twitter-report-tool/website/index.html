@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@owockibot Engagement Report - Last 7 Days</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px;
+            background-color: #f4f4f9;
+        }
+        .container {
+            background: white; padding: 40px; border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #1da1f2; border-bottom: 2px solid #1da1f2; padding-bottom: 10px; }
+        h2 { color: #14171a; margin-top: 30px; }
+        h3 { color: #14171a; margin-bottom: 5px; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f8f9fa; font-weight: bold; }
+        .metric-value { font-weight: bold; color: #1da1f2; }
+        .tweet {
+            background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 8px;
+            border-left: 4px solid #1da1f2;
+        }
+        .tweet-stats { font-size: 0.9em; color: #657786; }
+        .period { color: #657786; font-size: 1.1em; margin-bottom: 30px; }
+        .loading { text-align: center; padding: 40px; color: #657786; }
+        .error {
+            background: #f8d7da; color: #721c24; padding: 15px; border-radius: 8px;
+            margin: 20px 0; border-left: 4px solid #f5c6cb;
+        }
+        .refresh-btn {
+            background: #1da1f2; color: white; border: none; padding: 10px 20px;
+            border-radius: 5px; cursor: pointer; font-size: 14px; margin: 10px 0;
+        }
+        .refresh-btn:hover { background: #1991db; }
+        .last-updated { 
+            text-align: center; font-size: 0.9em; color: #657786; 
+            margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;
+        }
+        .data-source {
+            background: #d4edda; color: #155724; padding: 10px; border-radius: 5px;
+            margin: 20px 0; font-size: 0.9em; border-left: 4px solid #c3e6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 @owockibot Engagement Report - Last 7 Days</h1>
+        
+        <div class="data-source">
+            <strong>📡 Live Data:</strong> Report automatically generated from latest analytics data. 
+            <button class="refresh-btn" onclick="loadReport()" style="margin-left: 10px;">🔄 Refresh</button>
+        </div>
+        
+        <div id="report-content">
+            <div class="loading">Loading latest engagement data...</div>
+        </div>
+        
+        <div class="last-updated" id="last-updated"></div>
+    </div>
+
+    <script>
+        function formatNumber(num) {
+            return num.toLocaleString();
+        }
+        
+        function formatDate(dateStr) {
+            return new Date(dateStr).toLocaleDateString('en-US', { 
+                year: 'numeric', month: 'short', day: 'numeric' 
+            });
+        }
+        
+        function formatEngagement(tweet) {
+            const total = tweet.likes + tweet.retweets + tweet.replies;
+            const rate = tweet.impressions > 0 ? ((total / tweet.impressions) * 100).toFixed(2) : '0.00';
+            return `${total} total • ${rate}% rate`;
+        }
+        
+        async function loadReport() {
+            const content = document.getElementById('report-content');
+            
+            try {
+                content.innerHTML = '<div class="loading">Loading latest engagement data...</div>';
+                
+                // Try to load the JSON report data
+                const response = await fetch('./weekly_report.json');
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load report data: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Generate the report HTML
+                const reportHTML = `
+                    <p class="period"><strong>Period:</strong> ${formatDate(data.week_start)} to ${formatDate(data.week_end)}</p>
+
+                    <h2>📈 Overview</h2>
+                    <table>
+                        <thead>
+                            <tr><th>Metric</th><th>Value</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Tweets This Week</td><td class="metric-value">${data.tweet_count}</td></tr>
+                            <tr><td>Total Impressions</td><td class="metric-value">${formatNumber(data.total_impressions)}</td></tr>
+                            <tr><td>Total Likes</td><td class="metric-value">${formatNumber(data.total_likes)}</td></tr>
+                            <tr><td>Total Retweets</td><td class="metric-value">${formatNumber(data.total_retweets)}</td></tr>
+                            <tr><td>Total Replies</td><td class="metric-value">${formatNumber(data.total_replies)}</td></tr>
+                            <tr><td>Follower Growth</td><td class="metric-value">+${data.follower_growth}</td></tr>
+                            <tr><td>Engagement Rate</td><td class="metric-value">${data.engagement_rate}%</td></tr>
+                            <tr><td>Per-Follower Engagement</td><td class="metric-value">${data.per_follower_engagement}%</td></tr>
+                        </tbody>
+                    </table>
+
+                    <h2>🏆 Top Performing Tweets</h2>
+                    ${data.top_tweets.map((tweet, index) => `
+                        <div class="tweet">
+                            <h3>${index + 1}. ${tweet.text}</h3>
+                            <div class="tweet-stats">
+                                ❤️ <strong>${formatNumber(tweet.likes)}</strong> likes • 
+                                🔁 <strong>${formatNumber(tweet.retweets)}</strong> retweets • 
+                                💬 <strong>${formatNumber(tweet.replies)}</strong> replies • 
+                                👁️ <strong>${formatNumber(tweet.impressions)}</strong> impressions
+                                <br>
+                                📊 ${formatEngagement(tweet)} • 📅 ${formatDate(tweet.date)}
+                                ${tweet.url ? `• <a href="${tweet.url}" target="_blank" style="color: #1da1f2; text-decoration: none;">View on X ↗</a>` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                `;
+                
+                content.innerHTML = reportHTML;
+                document.getElementById('last-updated').textContent = `Last updated: ${new Date().toLocaleString()}`;
+                
+            } catch (error) {
+                console.error('Error loading report:', error);
+                content.innerHTML = `
+                    <div class="error">
+                        <strong>⚠️ Error loading report data:</strong> ${error.message}
+                        <br><br>
+                        This could be due to:
+                        <ul>
+                            <li>Report data not yet generated</li>
+                            <li>Network connectivity issues</li>
+                            <li>Missing weekly_report.json file</li>
+                        </ul>
+                        <br>
+                        <em>To generate fresh data, run: <code>python3 generate_sample.py</code></em>
+                    </div>
+                `;
+            }
+        }
+        
+        // Auto-load report on page load
+        document.addEventListener('DOMContentLoaded', loadReport);
+        
+        // Auto-refresh every 5 minutes
+        setInterval(loadReport, 300000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "230-base-name-tool",
+  "version": "1.0.0",
+  "description": "Base Name (.base.eth) registration tool - Check availability and pricing",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "keywords": [
+    "base",
+    "ens",
+    "base-name",
+    "blockchain",
+    "web3"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "viem": "^2.46.3"
+  }
+}
