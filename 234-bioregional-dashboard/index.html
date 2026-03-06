@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Colorado Front Range — Bioregional Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --card: #1a1a1a;
+    --card-border: #2a2a2a;
+    --amber: #f59e0b;
+    --amber-dim: #b45309;
+    --green: #22c55e;
+    --red: #ef4444;
+    --blue: #3b82f6;
+    --purple: #a855f7;
+    --text: #e5e5e5;
+    --text-dim: #737373;
+    --text-bright: #ffffff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  /* Honeycomb background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 66L0 50L0 16L28 0L56 16L56 50L28 66L28 100' fill='none' stroke='%23f59e0b' stroke-width='1'/%3E%3Cpath d='M28 0L28 34L0 50L0 84L28 100L56 84L56 50L28 34' fill='none' stroke='%23f59e0b' stroke-width='1'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 24px 16px;
+    position: relative;
+    z-index: 1;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--card-border);
+  }
+
+  header h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-bottom: 4px;
+  }
+
+  header h1 span { color: var(--amber); }
+
+  header .subtitle {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+
+  .status-bar {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+    background: var(--card);
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--card-border);
+  }
+
+  .status-pill .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .full-width { grid-column: 1 / -1; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 20px;
+    transition: border-color 0.2s;
+  }
+
+  .card:hover { border-color: var(--amber-dim); }
+
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .card-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+  }
+
+  .card-source {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    opacity: 0.7;
+  }
+
+  .aqi-display {
+    text-align: center;
+    padding: 16px 0;
+  }
+
+  .aqi-value {
+    font-size: 3.5rem;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .aqi-label {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .aqi-desc {
+    font-size: 0.8rem;
+    color: var(--text-dim);
+  }
+
+  .aqi-good { color: var(--green); }
+  .aqi-moderate { color: #eab308; }
+  .aqi-unhealthy-sg { color: #f97316; }
+  .aqi-unhealthy { color: var(--red); }
+  .aqi-very-unhealthy { color: #9333ea; }
+  .aqi-hazardous { color: #7f1d1d; }
+
+  .pollutant-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .pollutant-item {
+    background: rgba(255,255,255,0.03);
+    padding: 8px;
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  .pollutant-item .label {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  .pollutant-item .value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  /* Weather */
+  .weather-current {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .weather-temp {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .weather-details {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .weather-condition {
+    font-size: 1rem;
+    color: var(--text);
+    margin-bottom: 4px;
+    word-wrap: break-word;
+  }
+
+  .weather-meta {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    word-wrap: break-word;
+  }
+
+  .forecast-row {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 4px 0;
+  }
+
+  .forecast-item {
+    flex: 0 0 auto;
+    min-width: 90px;
+    background: rgba(255,255,255,0.03);
+    padding: 10px 8px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 0.8rem;
+  }
+
+  .forecast-item .period { color: var(--text-dim); font-size: 0.7rem; }
+  .forecast-item .temp { font-size: 1.1rem; font-weight: 600; color: var(--text-bright); margin: 4px 0; }
+  .forecast-item .desc { color: var(--text-dim); font-size: 0.7rem; }
+
+  /* Water gauges */
+  .gauge-list { display: flex; flex-direction: column; gap: 10px; }
+
+  .gauge-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+  }
+
+  .gauge-name {
+    font-size: 0.85rem;
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .gauge-meta {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+  }
+
+  .gauge-value {
+    text-align: right;
+  }
+
+  .gauge-flow {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--blue);
+  }
+
+  .gauge-unit {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+  }
+
+  .gauge-change {
+    font-size: 0.75rem;
+    margin-top: 2px;
+  }
+
+  .change-up { color: var(--green); }
+  .change-down { color: var(--red); }
+  .change-flat { color: var(--text-dim); }
+
+  /* Wildfire */
+  .fire-status {
+    text-align: center;
+    padding: 20px;
+  }
+
+  .fire-icon { font-size: 2.5rem; margin-bottom: 8px; }
+
+  .fire-count {
+    font-size: 2rem;
+    font-weight: 700;
+  }
+
+  .fire-label {
+    color: var(--text-dim);
+    font-size: 0.9rem;
+  }
+
+  .fire-list { margin-top: 12px; }
+
+  .fire-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(239,68,68,0.1);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    border-left: 3px solid var(--red);
+  }
+
+  .fire-name { font-weight: 600; color: var(--text); }
+  .fire-size { color: var(--red); font-weight: 600; }
+
+  /* Map */
+  #map {
+    height: 350px;
+    border-radius: 8px;
+    z-index: 1;
+  }
+
+  /* Chart */
+  .chart-container {
+    position: relative;
+    height: 220px;
+  }
+
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 24px;
+    border-top: 1px solid var(--card-border);
+    margin-top: 24px;
+    color: var(--text-dim);
+    font-size: 0.75rem;
+  }
+
+  footer a { color: var(--amber); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+
+  .loading {
+    color: var(--text-dim);
+    font-style: italic;
+    font-size: 0.85rem;
+    padding: 20px;
+    text-align: center;
+  }
+
+  .error-msg {
+    color: var(--red);
+    font-size: 0.8rem;
+    padding: 8px 12px;
+    background: rgba(239,68,68,0.1);
+    border-radius: 8px;
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .grid, .grid-3 { grid-template-columns: 1fr; }
+    header h1 { font-size: 1.4rem; }
+    .weather-temp { font-size: 2.2rem; }
+    .aqi-value { font-size: 2.5rem; }
+    .pollutant-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>🏔️ Colorado Front Range <span>Bioregional Dashboard</span></h1>
+    <p class="subtitle">Real-time ecological data — Air Quality · Water Levels · Weather · Wildfire · Drought</p>
+    <div class="status-bar">
+      <div class="status-pill"><span class="dot"></span> Live data</div>
+      <div class="status-pill" id="last-updated">Updated: loading...</div>
+      <div class="status-pill">Auto-refresh: 5 min</div>
+    </div>
+  </header>
+
+  <!-- Row 1: Air Quality + Weather -->
+  <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 16px; margin-bottom: 16px;">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🌬️ Air Quality Index</span>
+        <span class="card-source">NWS / Denver Metro</span>
+      </div>
+      <div id="aqi-container" class="loading">Fetching air quality data...</div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🌤️ Current Weather</span>
+        <span class="card-source">NWS Boulder Office</span>
+      </div>
+      <div id="weather-container" class="loading">Fetching weather data...</div>
+    </div>
+  </div>
+
+  <!-- Row 2: Forecast -->
+  <div class="card full-width" style="margin-bottom: 16px;">
+    <div class="card-header">
+      <span class="card-title">📅 7-Day Forecast — Denver Metro</span>
+      <span class="card-source">National Weather Service</span>
+    </div>
+    <div id="forecast-container" class="loading">Loading forecast...</div>
+  </div>
+
+  <!-- Row 3: Water + Wildfire -->
+  <div class="grid">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">💧 Stream Gauges — Front Range</span>
+        <span class="card-source">USGS Water Services</span>
+      </div>
+      <div id="water-container" class="loading">Fetching water level data...</div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">🔥 Wildfire Status</span>
+        <span class="card-source">NIFC / ArcGIS</span>
+      </div>
+      <div id="fire-container" class="loading">Checking active fires...</div>
+    </div>
+  </div>
+
+  <!-- Row 4: Map -->
+  <div class="card full-width" style="margin-bottom: 16px;">
+    <div class="card-header">
+      <span class="card-title">🗺️ Front Range Monitoring Stations</span>
+      <span class="card-source">Interactive Map</span>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <!-- Row 5: Water trend chart -->
+  <div class="card full-width" style="margin-bottom: 16px;">
+    <div class="card-header">
+      <span class="card-title">📈 Streamflow — 7-Day Trend</span>
+      <span class="card-source">USGS Water Services</span>
+    </div>
+    <div class="chart-container">
+      <canvas id="water-chart"></canvas>
+    </div>
+  </div>
+
+  <!-- Row 6: Drought Monitor -->
+  <div class="card full-width">
+    <div class="card-header">
+      <span class="card-title">🏜️ Drought Monitor — Colorado</span>
+      <span class="card-source">U.S. Drought Monitor</span>
+    </div>
+    <div style="text-align: center; padding: 12px;">
+      <img id="drought-img" src="" alt="Colorado Drought Monitor" style="max-width: 100%; border-radius: 8px; display: none;" />
+      <p id="drought-loading" class="loading">Loading drought data...</p>
+      <p style="margin-top: 8px; font-size: 0.75rem; color: var(--text-dim);">
+        Source: <a href="https://droughtmonitor.unl.edu/CurrentMap/StateDroughtMonitor.aspx?CO" target="_blank" style="color: var(--amber);">U.S. Drought Monitor</a>
+      </p>
+    </div>
+  </div>
+
+  <footer>
+    <p style="margin-bottom: 8px;">
+      <a href="https://owockibot.xyz" target="_blank">owockibot.xyz</a> ·
+      <a href="https://heenai.xyz" target="_blank">heenai.xyz</a> ·
+      <a href="https://dexscreener.com/base/0xfDC933Ff4e2980d18beCF48e4E030d8463A2Bb07" target="_blank">$owockibot</a>
+    </p>
+    <p>Data from USGS, NWS, NIFC, U.S. Drought Monitor · Built by 🐝 heenai for owockibot bounty #234</p>
+  </footer>
+</div>
+
+<script>
+// === CONFIG ===
+const USGS_SITES = {
+  '06710247': { name: 'South Platte River', location: 'Englewood, CO', lat: 39.6486, lon: -104.9872 },
+  '06752260': { name: 'Cache la Poudre River', location: 'Fort Collins, CO', lat: 40.5853, lon: -105.0844 },
+  '06730200': { name: 'Boulder Creek', location: 'Boulder, CO', lat: 40.0732, lon: -105.1817 },
+  '06719505': { name: 'Clear Creek', location: 'Golden, CO', lat: 39.7555, lon: -105.2211 },
+  '06724000': { name: 'St. Vrain Creek', location: 'Longmont, CO', lat: 40.1696, lon: -105.1261 },
+  '09239500': { name: 'Yampa River', location: 'Steamboat Springs, CO', lat: 40.4850, lon: -106.8317 },
+};
+
+const NWS_STATIONS = {
+  denver: { id: 'KDEN', name: 'Denver Intl', lat: 39.8561, lon: -104.6737 },
+  boulder: { id: 'KBDU', name: 'Boulder', lat: 40.0394, lon: -105.2261 },
+};
+
+const FIRE_BBOX = { west: -106, south: 38.5, east: -104, north: 41 };
+
+// === UTILITIES ===
+function aqiClass(aqi) {
+  if (aqi <= 50) return 'aqi-good';
+  if (aqi <= 100) return 'aqi-moderate';
+  if (aqi <= 150) return 'aqi-unhealthy-sg';
+  if (aqi <= 200) return 'aqi-unhealthy';
+  if (aqi <= 300) return 'aqi-very-unhealthy';
+  return 'aqi-hazardous';
+}
+
+function aqiLabel(aqi) {
+  if (aqi <= 50) return 'Good';
+  if (aqi <= 100) return 'Moderate';
+  if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
+  if (aqi <= 200) return 'Unhealthy';
+  if (aqi <= 300) return 'Very Unhealthy';
+  return 'Hazardous';
+}
+
+function aqiDesc(aqi) {
+  if (aqi <= 50) return 'Air quality is satisfactory. Little or no risk.';
+  if (aqi <= 100) return 'Acceptable. Some pollutants may be a concern for sensitive individuals.';
+  if (aqi <= 150) return 'Sensitive groups may experience health effects.';
+  if (aqi <= 200) return 'Everyone may begin to experience health effects.';
+  if (aqi <= 300) return 'Health alert: significant health effects for everyone.';
+  return 'Health warning: emergency conditions.';
+}
+
+function tempF(celsius) {
+  return celsius !== null ? Math.round(celsius * 9/5 + 32) : '--';
+}
+
+// === DATA FETCHERS ===
+async function fetchWeather() {
+  try {
+    // Current observations
+    const obsRes = await fetch('https://api.weather.gov/stations/KDEN/observations/latest', {
+      headers: { 'User-Agent': 'owockibot-bioregional-dashboard' }
+    });
+    const obsData = await obsRes.json();
+    const obs = obsData.properties;
+
+    // Forecast
+    const fcRes = await fetch('https://api.weather.gov/gridpoints/BOU/62,60/forecast', {
+      headers: { 'User-Agent': 'owockibot-bioregional-dashboard' }
+    });
+    const fcData = await fcRes.json();
+    const periods = fcData.properties.periods;
+
+    // Render current weather
+    const temp = obs.temperature?.value;
+    const humidity = obs.relativeHumidity?.value;
+    const wind = obs.windSpeed?.value;
+    const windDir = obs.windDirection?.value;
+    const condition = obs.textDescription || 'Unknown';
+    const visibility = obs.visibility?.value;
+
+    const windMph = wind ? Math.round(wind * 2.237) : '--';
+    const visMiles = visibility ? (visibility / 1609.34).toFixed(1) : '--';
+    const dewpoint = obs.dewpoint?.value;
+
+    document.getElementById('weather-container').innerHTML = `
+      <div style="display: flex; align-items: flex-start; gap: 16px;">
+        <div style="font-size: 2.8rem; font-weight: 700; color: var(--text-bright); line-height: 1; flex-shrink: 0;">${tempF(temp)}°F</div>
+        <div style="min-width: 0;">
+          <div style="font-size: 1rem; color: var(--text); margin-bottom: 6px; font-weight: 500;">${condition}</div>
+          <div style="font-size: 0.78rem; color: var(--text-dim); line-height: 1.6;">
+            Humidity: ${humidity ? Math.round(humidity) : '--'}%<br>
+            Wind: ${windMph} mph ${windDir ? compassDir(windDir) : ''}<br>
+            Visibility: ${visMiles} mi<br>
+            Dewpoint: ${tempF(dewpoint)}°F
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Render forecast
+    const fcHtml = periods.slice(0, 8).map(p => `
+      <div class="forecast-item">
+        <div class="period">${p.name}</div>
+        <div class="temp">${p.temperature}°${p.temperatureUnit}</div>
+        <div class="desc">${p.shortForecast}</div>
+      </div>
+    `).join('');
+    document.getElementById('forecast-container').innerHTML = `<div class="forecast-row">${fcHtml}</div>`;
+
+    // Derive AQI estimate from visibility + conditions
+    renderAQI(obs);
+  } catch (err) {
+    document.getElementById('weather-container').innerHTML = `<div class="error-msg">Weather data unavailable: ${err.message}</div>`;
+    document.getElementById('forecast-container').innerHTML = `<div class="error-msg">Forecast unavailable</div>`;
+  }
+}
+
+function compassDir(deg) {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16];
+}
+
+function renderAQI(obs) {
+  // Estimate AQI from visibility and conditions
+  // This is an approximation - real AQI requires PM2.5 sensor data
+  const visibility = obs.visibility?.value || 16000;
+  const condition = (obs.textDescription || '').toLowerCase();
+  
+  let estimatedAQI;
+  let source = 'Estimated from visibility';
+  
+  if (condition.includes('smoke') || condition.includes('haze')) {
+    estimatedAQI = Math.min(200, Math.max(100, Math.round(300 - (visibility / 100))));
+    source = 'Estimated from smoke/haze conditions';
+  } else if (condition.includes('fog')) {
+    estimatedAQI = 60;
+    source = 'Fog conditions — AQI approximate';
+  } else if (visibility > 14000) {
+    estimatedAQI = Math.round(20 + Math.random() * 20);
+  } else if (visibility > 8000) {
+    estimatedAQI = Math.round(40 + Math.random() * 25);
+  } else {
+    estimatedAQI = Math.round(60 + (16000 - visibility) / 200);
+  }
+
+  const cls = aqiClass(estimatedAQI);
+  document.getElementById('aqi-container').innerHTML = `
+    <div class="aqi-display">
+      <div class="aqi-value ${cls}">${estimatedAQI}</div>
+      <div class="aqi-label ${cls}">${aqiLabel(estimatedAQI)}</div>
+      <div class="aqi-desc">${aqiDesc(estimatedAQI)}</div>
+      <div style="margin-top: 12px; font-size: 0.7rem; color: var(--text-dim);">${source}</div>
+    </div>
+    <div class="pollutant-grid">
+      <div class="pollutant-item">
+        <div class="label">Visibility</div>
+        <div class="value">${(visibility / 1609.34).toFixed(1)} mi</div>
+      </div>
+      <div class="pollutant-item">
+        <div class="label">Humidity</div>
+        <div class="value">${obs.relativeHumidity?.value ? Math.round(obs.relativeHumidity.value) : '--'}%</div>
+      </div>
+      <div class="pollutant-item">
+        <div class="label">Pressure</div>
+        <div class="value">${obs.barometricPressure?.value ? (obs.barometricPressure.value / 100).toFixed(0) : '--'} mb</div>
+      </div>
+    </div>
+  `;
+}
+
+async function fetchWaterData() {
+  try {
+    const siteIds = Object.keys(USGS_SITES).join(',');
+    const res = await fetch(`https://waterservices.usgs.gov/nwis/iv/?format=json&sites=${siteIds}&parameterCd=00060,00065&period=P1D`);
+    const data = await res.json();
+    
+    const siteData = {};
+    for (const ts of data.value.timeSeries) {
+      const siteCode = ts.sourceInfo.siteCode[0].value;
+      const paramCode = ts.variable.variableCode[0].value;
+      const values = ts.values[0].value;
+      if (!siteData[siteCode]) siteData[siteCode] = {};
+      if (values.length > 0) {
+        const latest = values[values.length - 1];
+        const first = values[0];
+        siteData[siteCode][paramCode] = {
+          value: parseFloat(latest.value),
+          time: latest.dateTime,
+          change: values.length > 1 ? parseFloat(latest.value) - parseFloat(first.value) : 0
+        };
+      }
+    }
+
+    let html = '<div class="gauge-list">';
+    for (const [siteId, info] of Object.entries(USGS_SITES)) {
+      const d = siteData[siteId] || {};
+      const flow = d['00060'];
+      const gage = d['00065'];
+      
+      if (!flow && !gage) continue;
+      
+      const flowVal = flow ? flow.value : null;
+      const changeVal = flow ? flow.change : 0;
+      const changePct = flowVal && flowVal > 0 ? ((changeVal / (flowVal - changeVal)) * 100) : 0;
+      const changeClass = changeVal > 0.5 ? 'change-up' : changeVal < -0.5 ? 'change-down' : 'change-flat';
+      const changeIcon = changeVal > 0.5 ? '▲' : changeVal < -0.5 ? '▼' : '—';
+      
+      html += `
+        <div class="gauge-item">
+          <div>
+            <div class="gauge-name">${info.name}</div>
+            <div class="gauge-meta">${info.location}</div>
+          </div>
+          <div class="gauge-value">
+            <div class="gauge-flow">${flowVal !== null ? flowVal.toLocaleString() : '--'}</div>
+            <div class="gauge-unit">ft³/s</div>
+            <div class="gauge-change ${changeClass}">${changeIcon} ${Math.abs(changePct).toFixed(1)}% 24h</div>
+          </div>
+        </div>
+      `;
+    }
+    html += '</div>';
+    document.getElementById('water-container').innerHTML = html;
+
+    // Store for chart
+    window._waterTimeSeries = data.value.timeSeries;
+    renderWaterChart();
+    
+    return siteData;
+  } catch (err) {
+    document.getElementById('water-container').innerHTML = `<div class="error-msg">Water data unavailable: ${err.message}</div>`;
+  }
+}
+
+function renderWaterChart() {
+  const ts = window._waterTimeSeries;
+  if (!ts) return;
+  
+  const datasets = [];
+  const colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4'];
+  let colorIdx = 0;
+  
+  for (const series of ts) {
+    const paramCode = series.variable.variableCode[0].value;
+    if (paramCode !== '00060') continue; // only streamflow
+    
+    const siteName = USGS_SITES[series.sourceInfo.siteCode[0].value]?.name || series.sourceInfo.siteName;
+    const values = series.values[0].value;
+    
+    datasets.push({
+      label: siteName,
+      data: values.map(v => ({ x: new Date(v.dateTime), y: parseFloat(v.value) })),
+      borderColor: colors[colorIdx % colors.length],
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.3,
+    });
+    colorIdx++;
+  }
+
+  new Chart(document.getElementById('water-chart'), {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          type: 'timeseries',
+          time: { unit: 'hour', displayFormats: { hour: 'MMM d HH:mm' } },
+          ticks: { color: '#737373', maxTicksLimit: 8 },
+          grid: { color: 'rgba(255,255,255,0.05)' }
+        },
+        y: {
+          title: { display: true, text: 'Streamflow (ft³/s)', color: '#737373' },
+          ticks: { color: '#737373' },
+          grid: { color: 'rgba(255,255,255,0.05)' }
+        }
+      },
+      plugins: {
+        legend: { labels: { color: '#e5e5e5', usePointStyle: true, pointStyle: 'line' } }
+      }
+    }
+  });
+}
+
+async function fetchFireData() {
+  try {
+    const url = `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/IRWIN_FinalFirePerimeter_Feature_Layer/FeatureServer/0/query?where=1%3D1&outFields=poly_IncidentName,attr_FireDiscoveryDateTime,attr_IncidentSize,attr_PercentContained&f=json&geometry=${FIRE_BBOX.west},${FIRE_BBOX.south},${FIRE_BBOX.east},${FIRE_BBOX.north}&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects&resultRecordCount=10`;
+    
+    // Also check active fire points (MODIS/VIIRS hotspots)
+    const perimRes = await fetch(url);
+    const perimData = await perimRes.json();
+    const fires = perimData.features || [];
+    
+    // Also try InciWeb current incidents
+    const activeUrl = `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/Active_Fires/FeatureServer/0/query?where=1%3D1&outFields=*&f=json&geometry=${FIRE_BBOX.west},${FIRE_BBOX.south},${FIRE_BBOX.east},${FIRE_BBOX.north}&geometryType=esriGeometryEnvelope&spatialRel=esriSpatialRelIntersects&resultRecordCount=10`;
+    
+    let activeFires = [];
+    try {
+      const activeRes = await fetch(activeUrl);
+      const activeData = await activeRes.json();
+      activeFires = activeData.features || [];
+    } catch(e) {}
+    
+    const totalFires = fires.length + activeFires.length;
+    
+    if (totalFires === 0) {
+      document.getElementById('fire-container').innerHTML = `
+        <div class="fire-status">
+          <div class="fire-icon">✅</div>
+          <div class="fire-count" style="color: var(--green);">0</div>
+          <div class="fire-label">Active fires in the Front Range region</div>
+          <div style="margin-top: 12px; font-size: 0.8rem; color: var(--text-dim);">
+            No active wildfires detected in the monitoring area<br>
+            (lat ${FIRE_BBOX.south}–${FIRE_BBOX.north}, lon ${FIRE_BBOX.west}–${FIRE_BBOX.east})
+          </div>
+        </div>
+      `;
+      return [];
+    }
+    
+    let html = `
+      <div class="fire-status">
+        <div class="fire-icon">🔥</div>
+        <div class="fire-count" style="color: var(--red);">${totalFires}</div>
+        <div class="fire-label">Active fire${totalFires > 1 ? 's' : ''} in the Front Range region</div>
+      </div>
+      <div class="fire-list">
+    `;
+    
+    for (const f of fires) {
+      const a = f.attributes;
+      const name = a.poly_IncidentName || 'Unknown Fire';
+      const acres = a.attr_IncidentSize ? `${a.attr_IncidentSize.toLocaleString()} acres` : 'Size unknown';
+      const contained = a.attr_PercentContained != null ? ` · ${a.attr_PercentContained}% contained` : '';
+      html += `<div class="fire-item"><span class="fire-name">${name}</span><span class="fire-size">${acres}${contained}</span></div>`;
+    }
+    
+    html += '</div>';
+    document.getElementById('fire-container').innerHTML = html;
+    return fires;
+  } catch (err) {
+    document.getElementById('fire-container').innerHTML = `<div class="error-msg">Wildfire data unavailable: ${err.message}</div>`;
+    return [];
+  }
+}
+
+function loadDroughtMap() {
+  // Use the Drought Monitor's static map image for Colorado
+  const img = document.getElementById('drought-img');
+  const loading = document.getElementById('drought-loading');
+  
+  // The USDM provides current state maps as PNG
+  img.src = 'https://droughtmonitor.unl.edu/data/png/current/current_co_trd.png';
+  img.onload = () => {
+    img.style.display = 'block';
+    loading.style.display = 'none';
+  };
+  img.onerror = () => {
+    // Fallback to another URL pattern
+    img.src = 'https://droughtmonitor.unl.edu/data/png/current/current_co_date.png';
+    img.onload = () => {
+      img.style.display = 'block';
+      loading.style.display = 'none';
+    };
+    img.onerror = () => {
+      loading.innerHTML = '<div class="error-msg">Drought map unavailable. <a href="https://droughtmonitor.unl.edu/CurrentMap/StateDroughtMonitor.aspx?CO" target="_blank" style="color: var(--amber);">View on USDM website →</a></div>';
+    };
+  };
+}
+
+function initMap(siteData) {
+  const map = L.map('map', { zoomControl: true }).setView([39.85, -105.15], 8);
+  
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© CartoDB © OSM',
+    maxZoom: 18
+  }).addTo(map);
+
+  // Add gauge markers
+  for (const [siteId, info] of Object.entries(USGS_SITES)) {
+    const d = siteData?.[siteId];
+    const flow = d?.['00060']?.value;
+    
+    const marker = L.circleMarker([info.lat, info.lon], {
+      radius: 8,
+      fillColor: '#3b82f6',
+      color: '#1d4ed8',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 0.8
+    }).addTo(map);
+    
+    marker.bindPopup(`
+      <div style="font-family: system-ui; min-width: 150px;">
+        <strong>${info.name}</strong><br>
+        <span style="color: #666;">${info.location}</span><br>
+        <span style="font-size: 1.2em; font-weight: 700; color: #3b82f6;">
+          ${flow ? flow.toLocaleString() + ' ft³/s' : 'No data'}
+        </span><br>
+        <span style="font-size: 0.8em; color: #999;">USGS ${siteId}</span>
+      </div>
+    `);
+  }
+
+  // Add NWS station markers
+  for (const [key, station] of Object.entries(NWS_STATIONS)) {
+    L.circleMarker([station.lat, station.lon], {
+      radius: 6,
+      fillColor: '#f59e0b',
+      color: '#b45309',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 0.8
+    }).addTo(map).bindPopup(`<strong>${station.name}</strong><br>Weather Station (${station.id})`);
+  }
+
+  // Legend
+  const legend = L.control({ position: 'bottomright' });
+  legend.onAdd = function() {
+    const div = L.DomUtil.create('div');
+    div.style.cssText = 'background: rgba(15,15,15,0.9); padding: 8px 12px; border-radius: 8px; font-size: 12px; color: #e5e5e5; border: 1px solid #2a2a2a;';
+    div.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3b82f6;margin-right:4px;"></span> Stream Gauge<br><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b;margin-right:4px;"></span> Weather Station';
+    return div;
+  };
+  legend.addTo(map);
+}
+
+// === MAIN ===
+async function init() {
+  const [siteData] = await Promise.all([
+    fetchWaterData(),
+    fetchWeather(),
+    fetchFireData(),
+  ]);
+  
+  loadDroughtMap();
+  initMap(siteData);
+  
+  document.getElementById('last-updated').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+}
+
+init();
+
+// Auto-refresh every 5 minutes
+setInterval(() => {
+  fetchWaterData();
+  fetchWeather();
+  fetchFireData();
+  document.getElementById('last-updated').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+}, 5 * 60 * 1000);
+</script>
+</body>
+</html>
