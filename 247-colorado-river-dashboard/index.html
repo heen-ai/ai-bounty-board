@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Colorado River Basin — Water Level Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --card: #131920;
+    --card-border: #1e2a36;
+    --amber: #f59e0b;
+    --amber-dim: #b45309;
+    --blue: #0ea5e9;
+    --blue-dim: #0369a1;
+    --cyan: #22d3ee;
+    --green: #22c55e;
+    --red: #ef4444;
+    --orange: #f97316;
+    --text: #d4dce6;
+    --text-dim: #6b7f8e;
+    --text-bright: #f0f4f8;
+    --water: #1e6bb8;
+    --water-light: #3b9fe0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 66L0 50L0 16L28 0L56 16L56 50L28 66L28 100' fill='none' stroke='%23f59e0b' stroke-width='1'/%3E%3Cpath d='M28 0L28 34L0 50L0 84L28 100L56 84L56 50L28 34' fill='none' stroke='%23f59e0b' stroke-width='1'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+  .container { max-width: 1400px; margin: 0 auto; padding: 20px 16px; position: relative; z-index: 1; }
+  header { text-align: center; margin-bottom: 28px; padding-bottom: 20px; border-bottom: 1px solid var(--card-border); }
+  header h1 { font-size: 1.8rem; font-weight: 700; color: var(--text-bright); }
+  header h1 span { color: var(--blue); }
+  header .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-top: 4px; }
+  .status-bar { display: flex; justify-content: center; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+  .status-pill { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: var(--text-dim); background: var(--card); padding: 4px 10px; border-radius: 16px; border: 1px solid var(--card-border); }
+  .status-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* Alert banner */
+  .alert-banner { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; text-align: center; font-size: 0.85rem; }
+  .alert-banner .icon { font-size: 1.1rem; margin-right: 6px; }
+
+  /* Grid */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .full-width { grid-column: 1 / -1; }
+
+  .card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .card:hover { border-color: rgba(14,165,233,0.3); }
+  .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+  .card-title { font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
+  .card-source { font-size: 0.65rem; color: var(--text-dim); opacity: 0.7; }
+
+  /* Reservoir cards */
+  .reservoir-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .reservoir-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 12px; padding: 24px; position: relative; overflow: hidden; }
+  .reservoir-card::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 3px; }
+  .reservoir-card.powell::after { background: linear-gradient(90deg, var(--blue), var(--cyan)); }
+  .reservoir-card.mead::after { background: linear-gradient(90deg, var(--orange), var(--amber)); }
+  .reservoir-name { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); margin-bottom: 8px; }
+  .reservoir-name .emoji { font-size: 1rem; margin-right: 4px; }
+  .reservoir-storage { font-size: 2.2rem; font-weight: 800; color: var(--text-bright); line-height: 1; }
+  .reservoir-unit { font-size: 0.85rem; color: var(--text-dim); font-weight: 400; margin-left: 4px; }
+  .reservoir-meta { margin-top: 10px; font-size: 0.8rem; color: var(--text-dim); line-height: 1.6; }
+  .capacity-bar { margin-top: 12px; background: rgba(255,255,255,0.06); border-radius: 6px; height: 10px; overflow: hidden; }
+  .capacity-fill { height: 100%; border-radius: 6px; transition: width 0.5s; }
+  .capacity-fill.powell { background: linear-gradient(90deg, var(--blue-dim), var(--blue)); }
+  .capacity-fill.mead { background: linear-gradient(90deg, var(--amber-dim), var(--amber)); }
+  .capacity-labels { display: flex; justify-content: space-between; margin-top: 4px; font-size: 0.7rem; color: var(--text-dim); }
+
+  /* Gauge cards */
+  .gauge-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .gauge-card { background: rgba(255,255,255,0.02); border: 1px solid var(--card-border); border-radius: 10px; padding: 14px; }
+  .gauge-card .name { font-size: 0.85rem; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .gauge-card .location { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 8px; }
+  .gauge-card .flow { font-size: 1.5rem; font-weight: 700; color: var(--blue); }
+  .gauge-card .unit { font-size: 0.7rem; color: var(--text-dim); }
+  .gauge-card .sparkline { margin-top: 6px; height: 30px; }
+
+  /* Map */
+  #map { height: 450px; border-radius: 10px; }
+  .map-legend { position: absolute; bottom: 10px; right: 10px; background: rgba(10,14,20,0.92); padding: 10px 14px; border-radius: 8px; font-size: 0.75rem; color: var(--text); z-index: 1000; border: 1px solid var(--card-border); }
+  .map-legend .item { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .map-legend .swatch { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* Charts */
+  .chart-container { position: relative; height: 320px; }
+  .chart-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .chart-tab { padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; cursor: pointer; border: 1px solid var(--card-border); background: transparent; color: var(--text-dim); transition: all 0.2s; }
+  .chart-tab.active { background: var(--blue); color: white; border-color: var(--blue); }
+  .chart-tab:hover:not(.active) { border-color: var(--blue); color: var(--text); }
+
+  /* Stats row */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .stat-card { background: var(--card); border: 1px solid var(--card-border); border-radius: 10px; padding: 14px; text-align: center; }
+  .stat-value { font-size: 1.6rem; font-weight: 700; color: var(--text-bright); }
+  .stat-label { font-size: 0.7rem; color: var(--text-dim); margin-top: 2px; }
+  .stat-change { font-size: 0.75rem; margin-top: 4px; }
+  .stat-down { color: var(--red); }
+  .stat-up { color: var(--green); }
+
+  footer { text-align: center; padding: 20px; border-top: 1px solid var(--card-border); margin-top: 20px; color: var(--text-dim); font-size: 0.7rem; }
+  footer a { color: var(--amber); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  .loading { color: var(--text-dim); font-style: italic; font-size: 0.85rem; padding: 20px; text-align: center; }
+  .error-msg { color: var(--red); font-size: 0.8rem; padding: 8px 12px; background: rgba(239,68,68,0.1); border-radius: 8px; }
+
+  @media (max-width: 768px) {
+    .reservoir-grid, .grid-2, .stats-row { grid-template-columns: 1fr; }
+    .gauge-grid { grid-template-columns: 1fr 1fr; }
+    .reservoir-storage { font-size: 1.8rem; }
+    #map { height: 300px; }
+    .chart-container { height: 250px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>🏔️ Colorado River Basin <span>Water Level Dashboard</span></h1>
+    <p class="subtitle">Real-time reservoir levels + 26-year historical data — USGS · Bureau of Reclamation</p>
+    <div class="status-bar">
+      <div class="status-pill"><span class="dot"></span> Live data</div>
+      <div class="status-pill" id="last-updated">Updated: loading...</div>
+      <div class="status-pill">Auto-refresh: 10 min</div>
+    </div>
+  </header>
+
+  <div id="alert-container"></div>
+
+  <!-- Stats overview -->
+  <div class="stats-row" id="stats-row">
+    <div class="stat-card"><div class="stat-value" id="stat-powell-pct">--</div><div class="stat-label">Powell Capacity</div><div class="stat-change" id="stat-powell-change"></div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-mead-pct">--</div><div class="stat-label">Mead Capacity</div><div class="stat-change" id="stat-mead-change"></div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-lees-ferry">--</div><div class="stat-label">Lees Ferry Flow</div><div class="stat-change" id="stat-lees-change"></div></div>
+    <div class="stat-card"><div class="stat-value" id="stat-combined">--</div><div class="stat-label">Combined Storage</div><div class="stat-change" id="stat-combined-change"></div></div>
+  </div>
+
+  <!-- Reservoir cards -->
+  <div class="reservoir-grid">
+    <div class="reservoir-card powell" id="powell-card">
+      <div class="reservoir-name"><span class="emoji">⛰️</span> Lake Powell — Glen Canyon Dam</div>
+      <div id="powell-data" class="loading">Loading reservoir data...</div>
+    </div>
+    <div class="reservoir-card mead" id="mead-card">
+      <div class="reservoir-name"><span class="emoji">🏜️</span> Lake Mead — Hoover Dam</div>
+      <div id="mead-data" class="loading">Loading reservoir data...</div>
+    </div>
+  </div>
+
+  <!-- Satellite Map -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">🛰️ Basin Map — Satellite View with Gauges</span>
+      <span class="card-source">Esri World Imagery · USGS</span>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <!-- 26-year historical chart -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">📉 26-Year Storage History (2000–2026)</span>
+      <span class="card-source">Bureau of Reclamation</span>
+    </div>
+    <div class="chart-tabs">
+      <button class="chart-tab active" onclick="setHistoryView('both')">Combined</button>
+      <button class="chart-tab" onclick="setHistoryView('powell')">Lake Powell</button>
+      <button class="chart-tab" onclick="setHistoryView('mead')">Lake Mead</button>
+    </div>
+    <div class="chart-container">
+      <canvas id="history-chart"></canvas>
+    </div>
+    <div style="text-align: center; margin-top: 8px; font-size: 0.75rem; color: var(--text-dim);">
+      Daily reservoir storage in acre-feet · Source: Bureau of Reclamation RISE API
+    </div>
+  </div>
+
+  <!-- Stream gauges -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">🌊 Mainstem & Tributary Gauges</span>
+      <span class="card-source">USGS Water Services — Real-time</span>
+    </div>
+    <div class="gauge-grid" id="gauge-container">
+      <div class="loading">Loading gauge data...</div>
+    </div>
+  </div>
+
+  <!-- 7-day streamflow chart -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">📈 7-Day Streamflow Trend</span>
+      <span class="card-source">USGS 15-min intervals</span>
+    </div>
+    <div class="chart-container">
+      <canvas id="flow-chart"></canvas>
+    </div>
+  </div>
+
+  <footer>
+    <p style="margin-bottom: 6px;">
+      <a href="https://owockibot.xyz" target="_blank">owockibot.xyz</a> ·
+      <a href="https://heenai.xyz" target="_blank">heenai.xyz</a> ·
+      <a href="https://dexscreener.com/base/0xfDC933Ff4e2980d18beCF48e4E030d8463A2Bb07" target="_blank">$owockibot</a> ·
+      <a href="https://www.usbr.gov/lc/region/g4000/hourly/mead-elv.html" target="_blank">USBR Mead</a> ·
+      <a href="https://www.usbr.gov/uc/water/hydrodata/reservoir_data/site_map.html" target="_blank">USBR Data</a>
+    </p>
+    <p>Data from USGS Water Services & Bureau of Reclamation RISE API · Built by 🐝 heenai for owockibot bounty #247</p>
+  </footer>
+</div>
+
+<script>
+// === CONFIG ===
+const POWELL_MAX_AF = 24_322_000;
+const MEAD_MAX_AF = 26_134_000;
+const POWELL_DEAD_POOL_AF = 1_895_000;
+const MEAD_DEAD_POOL_AF = 2_547_000;
+
+const USGS_GAUGES = {
+  '09380000': { name: 'Colorado R. at Lees Ferry', loc: 'AZ — below Powell', lat: 36.8653, lon: -111.5879, main: true },
+  '09402500': { name: 'Colorado R. near Grand Canyon', loc: 'AZ', lat: 36.0992, lon: -111.8264, main: true },
+  '09315000': { name: 'Green River at Green River', loc: 'UT', lat: 38.9867, lon: -110.1548 },
+  '09180500': { name: 'Colorado R. near Cisco', loc: 'UT', lat: 38.8100, lon: -109.2928 },
+  '09152500': { name: 'Gunnison R. near Grand Junction', loc: 'CO', lat: 38.9831, lon: -108.4503 },
+  '09379500': { name: 'San Juan R. near Bluff', loc: 'UT', lat: 37.1464, lon: -109.5903 },
+  '09211200': { name: 'Green R. below Fontenelle', loc: 'WY', lat: 42.0286, lon: -110.0653 },
+  '09261000': { name: 'Green R. near Jensen', loc: 'UT', lat: 40.4003, lon: -109.3364 },
+};
+
+const RESERVOIR_LOCATIONS = {
+  powell: { lat: 37.0578, lon: -111.3033, name: 'Lake Powell', color: '#0ea5e9' },
+  mead: { lat: 36.0160, lon: -114.7377, name: 'Lake Mead', color: '#f59e0b' },
+};
+
+// River path (simplified polyline of the Colorado River mainstem)
+const RIVER_PATH = [
+  [40.47, -105.82], // Rocky Mountain NP headwaters
+  [40.09, -106.05], // Granby
+  [39.57, -106.60], // Glenwood Springs
+  [39.07, -108.55], // Grand Junction
+  [38.81, -109.29], // Cisco
+  [38.99, -110.15], // Green River confluence
+  [38.19, -110.40], // Cataract Canyon
+  [37.06, -111.30], // Lake Powell / Glen Canyon Dam
+  [36.87, -111.59], // Lees Ferry
+  [36.10, -111.83], // Grand Canyon
+  [36.01, -114.74], // Lake Mead / Hoover Dam
+];
+
+const GREEN_RIVER_PATH = [
+  [43.00, -109.80], // Wind River Range
+  [42.03, -110.07], // Fontenelle
+  [41.53, -109.47], // Flaming Gorge
+  [40.40, -109.34], // Jensen
+  [38.99, -110.15], // Confluence with Colorado
+];
+
+let historyChart = null;
+let flowChart = null;
+let powellHistory = [];
+let meadHistory = [];
+
+// === DATA FETCHERS ===
+
+async function fetchUSBR(itemId) {
+  const res = await fetch(`https://data.usbr.gov/rise/api/result/download?itemId=${itemId}&after=2000-01-01&before=2026-12-31&order=ASC&format=json`);
+  const data = await res.json();
+  const records = [];
+  for (const key of Object.keys(data)) {
+    if (/^\d+$/.test(key)) {
+      const r = data[key];
+      records.push({ date: r.dateTime.split(' ')[0], value: r.result });
+    }
+  }
+  return records;
+}
+
+async function fetchReservoirData() {
+  try {
+    const [powellData, meadData] = await Promise.all([
+      fetchUSBR(509),  // Powell storage
+      fetchUSBR(6124), // Mead storage
+    ]);
+
+    powellHistory = powellData;
+    meadHistory = meadData;
+
+    const powellLatest = powellData[powellData.length - 1];
+    const meadLatest = meadData[meadData.length - 1];
+    const powellPrev = powellData[powellData.length - 31] || powellData[0];
+    const meadPrev = meadData[meadData.length - 31] || meadData[0];
+    const powellYearAgo = powellData.find(d => d.date === getDateNDaysAgo(365)) || powellData[powellData.length - 365];
+    const meadYearAgo = meadData.find(d => d.date === getDateNDaysAgo(365)) || meadData[meadData.length - 365];
+
+    const powellPct = (powellLatest.value / POWELL_MAX_AF * 100);
+    const meadPct = (meadLatest.value / MEAD_MAX_AF * 100);
+    const combinedAF = powellLatest.value + meadLatest.value;
+    const combinedMax = POWELL_MAX_AF + MEAD_MAX_AF;
+    const combinedPct = (combinedAF / combinedMax * 100);
+
+    // Stats
+    document.getElementById('stat-powell-pct').textContent = powellPct.toFixed(1) + '%';
+    document.getElementById('stat-mead-pct').textContent = meadPct.toFixed(1) + '%';
+    document.getElementById('stat-combined').textContent = combinedPct.toFixed(1) + '%';
+
+    const powell30dChange = ((powellLatest.value - powellPrev.value) / powellPrev.value * 100).toFixed(1);
+    const mead30dChange = ((meadLatest.value - meadPrev.value) / meadPrev.value * 100).toFixed(1);
+    document.getElementById('stat-powell-change').innerHTML = `<span class="${powell30dChange >= 0 ? 'stat-up' : 'stat-down'}">${powell30dChange >= 0 ? '▲' : '▼'} ${Math.abs(powell30dChange)}% 30d</span>`;
+    document.getElementById('stat-mead-change').innerHTML = `<span class="${mead30dChange >= 0 ? 'stat-up' : 'stat-down'}">${mead30dChange >= 0 ? '▲' : '▼'} ${Math.abs(mead30dChange)}% 30d</span>`;
+
+    if (powellYearAgo && meadYearAgo) {
+      const combinedYearAgo = powellYearAgo.value + meadYearAgo.value;
+      const yrChange = ((combinedAF - combinedYearAgo) / combinedYearAgo * 100).toFixed(1);
+      document.getElementById('stat-combined-change').innerHTML = `<span class="${yrChange >= 0 ? 'stat-up' : 'stat-down'}">${yrChange >= 0 ? '▲' : '▼'} ${Math.abs(yrChange)}% yr</span>`;
+    }
+
+    // Alert
+    if (powellPct < 30 || meadPct < 40) {
+      document.getElementById('alert-container').innerHTML = `
+        <div class="alert-banner">
+          <span class="icon">⚠️</span>
+          <strong>Low reservoir levels</strong> — Powell at ${powellPct.toFixed(1)}%, Mead at ${meadPct.toFixed(1)}%.
+          Combined storage: ${(combinedAF / 1e6).toFixed(2)}M of ${(combinedMax / 1e6).toFixed(1)}M acre-feet (${combinedPct.toFixed(1)}%).
+        </div>
+      `;
+    }
+
+    // Powell card
+    renderReservoirCard('powell-data', {
+      storage: powellLatest.value,
+      max: POWELL_MAX_AF,
+      deadPool: POWELL_DEAD_POOL_AF,
+      pct: powellPct,
+      date: powellLatest.date,
+      change30d: powell30dChange,
+      color: 'powell',
+      peak: Math.max(...powellData.map(d => d.value)),
+      peakDate: powellData.reduce((a, b) => b.value > a.value ? b : a).date,
+    });
+
+    // Mead card
+    renderReservoirCard('mead-data', {
+      storage: meadLatest.value,
+      max: MEAD_MAX_AF,
+      deadPool: MEAD_DEAD_POOL_AF,
+      pct: meadPct,
+      date: meadLatest.date,
+      change30d: mead30dChange,
+      color: 'mead',
+      peak: Math.max(...meadData.map(d => d.value)),
+      peakDate: meadData.reduce((a, b) => b.value > a.value ? b : a).date,
+    });
+
+    renderHistoryChart('both');
+  } catch (err) {
+    document.getElementById('powell-data').innerHTML = `<div class="error-msg">Error: ${err.message}</div>`;
+    document.getElementById('mead-data').innerHTML = `<div class="error-msg">Error: ${err.message}</div>`;
+  }
+}
+
+function getDateNDaysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().split('T')[0];
+}
+
+function renderReservoirCard(containerId, d) {
+  const aboveDeadPool = d.storage - d.deadPool;
+  const livePct = (aboveDeadPool / (d.max - d.deadPool) * 100).toFixed(1);
+
+  document.getElementById(containerId).innerHTML = `
+    <div class="reservoir-storage">${(d.storage / 1e6).toFixed(2)}<span class="reservoir-unit">M acre-feet</span></div>
+    <div class="reservoir-meta">
+      ${d.pct.toFixed(1)}% of capacity · ${livePct}% of live storage<br>
+      Dead pool: ${(d.deadPool / 1e6).toFixed(1)}M af · Full pool: ${(d.max / 1e6).toFixed(1)}M af<br>
+      Peak (since 2000): ${(d.peak / 1e6).toFixed(2)}M af on ${d.peakDate}<br>
+      As of ${d.date}
+    </div>
+    <div class="capacity-bar">
+      <div class="capacity-fill ${d.color}" style="width: ${d.pct}%"></div>
+    </div>
+    <div class="capacity-labels">
+      <span>Dead pool</span>
+      <span>${d.pct.toFixed(1)}%</span>
+      <span>Full pool</span>
+    </div>
+  `;
+}
+
+function renderHistoryChart(view) {
+  const ctx = document.getElementById('history-chart');
+  if (historyChart) historyChart.destroy();
+
+  // Downsample to weekly for performance
+  function weekly(data) {
+    return data.filter((_, i) => i % 7 === 0).map(d => ({ x: new Date(d.date), y: d.value / 1e6 }));
+  }
+
+  const datasets = [];
+  if (view === 'both' || view === 'powell') {
+    datasets.push({
+      label: 'Lake Powell',
+      data: weekly(powellHistory),
+      borderColor: '#0ea5e9',
+      backgroundColor: 'rgba(14,165,233,0.08)',
+      fill: true,
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.2,
+    });
+  }
+  if (view === 'both' || view === 'mead') {
+    datasets.push({
+      label: 'Lake Mead',
+      data: weekly(meadHistory),
+      borderColor: '#f59e0b',
+      backgroundColor: 'rgba(245,158,11,0.08)',
+      fill: true,
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.2,
+    });
+  }
+
+  // Add dead pool reference lines
+  if (view !== 'mead') {
+    datasets.push({
+      label: 'Powell Dead Pool',
+      data: [{ x: new Date('2000-01-01'), y: POWELL_DEAD_POOL_AF / 1e6 }, { x: new Date('2026-12-31'), y: POWELL_DEAD_POOL_AF / 1e6 }],
+      borderColor: 'rgba(14,165,233,0.3)',
+      borderDash: [5, 5],
+      borderWidth: 1,
+      pointRadius: 0,
+      fill: false,
+    });
+  }
+  if (view !== 'powell') {
+    datasets.push({
+      label: 'Mead Dead Pool',
+      data: [{ x: new Date('2000-01-01'), y: MEAD_DEAD_POOL_AF / 1e6 }, { x: new Date('2026-12-31'), y: MEAD_DEAD_POOL_AF / 1e6 }],
+      borderColor: 'rgba(245,158,11,0.3)',
+      borderDash: [5, 5],
+      borderWidth: 1,
+      pointRadius: 0,
+      fill: false,
+    });
+  }
+
+  historyChart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'year', displayFormats: { year: 'yyyy' } },
+          ticks: { color: '#6b7f8e', maxTicksLimit: 14 },
+          grid: { color: 'rgba(255,255,255,0.03)' }
+        },
+        y: {
+          title: { display: true, text: 'Storage (million acre-feet)', color: '#6b7f8e' },
+          ticks: { color: '#6b7f8e', callback: v => v.toFixed(0) + 'M' },
+          grid: { color: 'rgba(255,255,255,0.03)' },
+          min: 0,
+        }
+      },
+      plugins: {
+        legend: { labels: { color: '#d4dce6', usePointStyle: true, pointStyle: 'line', filter: item => !item.text.includes('Dead Pool') } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.dataset.label.includes('Dead Pool')) return null;
+              return `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)}M af`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function setHistoryView(view) {
+  document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  renderHistoryChart(view);
+}
+
+async function fetchGauges() {
+  try {
+    const siteIds = Object.keys(USGS_GAUGES).join(',');
+    const res = await fetch(`https://waterservices.usgs.gov/nwis/iv/?format=json&sites=${siteIds}&parameterCd=00060&period=P7D`);
+    const data = await res.json();
+
+    const siteData = {};
+    for (const ts of data.value.timeSeries) {
+      const siteCode = ts.sourceInfo.siteCode[0].value;
+      const values = ts.values[0].value;
+      if (values.length > 0) {
+        siteData[siteCode] = {
+          latest: parseFloat(values[values.length - 1].value),
+          time: values[values.length - 1].dateTime,
+          series: values.map(v => ({ x: new Date(v.dateTime), y: parseFloat(v.value) })),
+        };
+      }
+    }
+
+    // Lees Ferry stat
+    if (siteData['09380000']) {
+      const lf = siteData['09380000'];
+      document.getElementById('stat-lees-ferry').textContent = lf.latest.toLocaleString() + ' cfs';
+    }
+
+    // Render gauge cards
+    let html = '';
+    for (const [siteId, info] of Object.entries(USGS_GAUGES)) {
+      const d = siteData[siteId];
+      if (!d) continue;
+      html += `
+        <div class="gauge-card">
+          <div class="name">${info.name}</div>
+          <div class="location">${info.loc} · USGS ${siteId}</div>
+          <div class="flow">${d.latest.toLocaleString()}</div>
+          <div class="unit">ft³/s</div>
+        </div>
+      `;
+    }
+    document.getElementById('gauge-container').innerHTML = html;
+
+    // 7-day flow chart
+    renderFlowChart(siteData);
+
+    return siteData;
+  } catch (err) {
+    document.getElementById('gauge-container').innerHTML = `<div class="error-msg">Gauge data unavailable: ${err.message}</div>`;
+  }
+}
+
+function renderFlowChart(siteData) {
+  const ctx = document.getElementById('flow-chart');
+  if (flowChart) flowChart.destroy();
+
+  const colors = ['#0ea5e9', '#22d3ee', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#f97316', '#6366f1'];
+  const datasets = [];
+  let i = 0;
+
+  for (const [siteId, info] of Object.entries(USGS_GAUGES)) {
+    const d = siteData[siteId];
+    if (!d || !d.series.length) continue;
+
+    // Downsample to hourly for chart performance
+    const hourly = d.series.filter((_, idx) => idx % 4 === 0);
+
+    datasets.push({
+      label: info.name.replace('Colorado R.', 'CO River').replace('Green R.', 'Green').replace('Gunnison R.', 'Gunnison').replace('San Juan R.', 'San Juan'),
+      data: hourly,
+      borderColor: colors[i % colors.length],
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      pointRadius: 0,
+      tension: 0.3,
+    });
+    i++;
+  }
+
+  flowChart = new Chart(ctx, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: {
+          type: 'time',
+          time: { unit: 'day', displayFormats: { day: 'MMM d' } },
+          ticks: { color: '#6b7f8e' },
+          grid: { color: 'rgba(255,255,255,0.03)' }
+        },
+        y: {
+          title: { display: true, text: 'Streamflow (ft³/s)', color: '#6b7f8e' },
+          ticks: { color: '#6b7f8e', callback: v => v >= 1000 ? (v/1000).toFixed(1) + 'K' : v },
+          grid: { color: 'rgba(255,255,255,0.03)' }
+        }
+      },
+      plugins: {
+        legend: { labels: { color: '#d4dce6', usePointStyle: true, pointStyle: 'line' } }
+      }
+    }
+  });
+}
+
+function initMap(gaugeData) {
+  const map = L.map('map').setView([37.5, -110.5], 6);
+
+  // Satellite imagery
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri',
+    maxZoom: 18
+  }).addTo(map);
+
+  // Labels overlay
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 18,
+    opacity: 0.8
+  }).addTo(map);
+
+  // Draw Colorado River path
+  L.polyline(RIVER_PATH, {
+    color: '#3b9fe0',
+    weight: 3,
+    opacity: 0.7,
+    dashArray: null,
+    smoothFactor: 1.5,
+  }).addTo(map);
+
+  // Draw Green River
+  L.polyline(GREEN_RIVER_PATH, {
+    color: '#22c55e',
+    weight: 2.5,
+    opacity: 0.6,
+    smoothFactor: 1.5,
+  }).addTo(map);
+
+  // Reservoir markers
+  for (const [key, r] of Object.entries(RESERVOIR_LOCATIONS)) {
+    const marker = L.circleMarker([r.lat, r.lon], {
+      radius: 12,
+      fillColor: r.color,
+      color: '#ffffff',
+      weight: 2,
+      opacity: 1,
+      fillOpacity: 0.9,
+    }).addTo(map);
+    marker.bindPopup(`<div style="font-family:system-ui;"><strong>${r.name}</strong><br><span id="map-${key}-info">Loading...</span></div>`);
+  }
+
+  // Gauge markers
+  for (const [siteId, info] of Object.entries(USGS_GAUGES)) {
+    const d = gaugeData?.[siteId];
+    const flow = d ? d.latest.toLocaleString() + ' cfs' : 'No data';
+
+    L.circleMarker([info.lat, info.lon], {
+      radius: info.main ? 8 : 6,
+      fillColor: info.main ? '#22d3ee' : '#6b7f8e',
+      color: '#ffffff',
+      weight: 1.5,
+      opacity: 1,
+      fillOpacity: 0.8,
+    }).addTo(map).bindPopup(`
+      <div style="font-family:system-ui; min-width: 140px;">
+        <strong>${info.name}</strong><br>
+        <span style="color: #666;">${info.loc}</span><br>
+        <span style="font-size: 1.2em; font-weight: 700; color: #0ea5e9;">${flow}</span><br>
+        <span style="font-size: 0.8em; color: #999;">USGS ${siteId}</span>
+      </div>
+    `);
+  }
+}
+
+// === MAIN ===
+async function init() {
+  const [gaugeData] = await Promise.all([
+    fetchGauges(),
+    fetchReservoirData(),
+  ]);
+
+  initMap(gaugeData);
+
+  // Update reservoir info in map popups
+  const powellPct = powellHistory.length ? (powellHistory[powellHistory.length-1].value / POWELL_MAX_AF * 100).toFixed(1) : '--';
+  const meadPct = meadHistory.length ? (meadHistory[meadHistory.length-1].value / MEAD_MAX_AF * 100).toFixed(1) : '--';
+
+  document.getElementById('last-updated').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+}
+
+init();
+setInterval(() => { fetchGauges(); fetchReservoirData(); }, 10 * 60 * 1000);
+</script>
+</body>
+</html>
